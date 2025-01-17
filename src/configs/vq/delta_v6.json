@@ -6,8 +6,8 @@
   "learning_rate": 0.01,
   "warmup_steps": 100000,
   "model_path": "models/",
-  "num_epochs": 500000,
-  "batch_size": 32,
+  "num_epochs": 100,
+  "batch_size": 4,
   "loss_config": {
     "loss_aug": "normal",
     "loss_type": "on_logit",
@@ -44,16 +44,16 @@
       "use_continuous": "v6",
       "use_conv": false,
       "hidden_size": 200,
-      "in_dim": 200,
+      "in_dim": 209,           
       "num_hidden_layers": 1,
       "num_attention_heads": 10,
       "intermediate_size": 128,
-      "sequence_length": 40
+      "sequence_length": 64  
     }
   },
   "data": {
     "local": true,
     "basedir": "./",
-    "speaker": "conan"
+    "speaker": "VCL"         
   }
 }

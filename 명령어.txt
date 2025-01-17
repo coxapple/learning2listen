@@ -1,0 +1,5 @@
+python train_vq_transformer.py --config ./configs/l2_32_smoothSS.json
+
+python -u train_vq_decoder.py --config ./configs/vq/delta_v6.json
+
+python test_vq_decoder.py --config configs/vq/delta_v6.json --checkpoint models/delta_v6_er2er_best.pth --speaker 'vcl' --save

@@ -40,9 +40,30 @@ def generator_train_step(config, epoch, generator, g_optimizer, train_X,
     for bii, bi in enumerate(batchinds):
         idxStart = bi * config['batch_size']
         gtData_np = train_X[idxStart:(idxStart + config['batch_size']), :, :]
+
+        # 디버그: gtData_np shape 확인
+        if bii == 0:
+            print(f"DEBUG: Batch {bii} - gtData_np shape:", gtData_np.shape)
+
+
         gtData = Variable(torch.from_numpy(gtData_np),
                           requires_grad=False).cuda()
+        
+
+        # 디버그: gtData tensor shape 확인        
+        if bii == 0:
+            print(f"DEBUG: Batch {bii} - gtData tensor shape:", gtData.shape)
+
+
         prediction, quant_loss = generator(gtData, None)
+
+        # 디버그: prediction과 quant_loss shape 확인
+        if bii == 0:
+            print(f"DEBUG: Batch {bii} - prediction shape:", prediction.shape)
+            print(f"DEBUG: Batch {bii} - quant_loss shape/type:", type(quant_loss))
+
+
+
         g_loss = calc_vq_loss(prediction, gtData, quant_loss)
         g_optimizer.zero_grad()
         g_loss.backward()
@@ -70,10 +91,22 @@ def generator_val_step(config, epoch, generator, g_optimizer, test_X,
     for bii, bi in enumerate(batchinds):
         idxStart = bi * config['batch_size']
         gtData_np = test_X[idxStart:(idxStart + config['batch_size']), :, :]
+
+        # 디버그: 첫 배치 shape 확인
+        if bii == 0:
+            print(f"DEBUG: [VAL] Batch {bii} - gtData_np shape:", gtData_np.shape)
+
+
         gtData = Variable(torch.from_numpy(gtData_np),
                           requires_grad=False).cuda()
         with torch.no_grad():
             prediction, quant_loss = generator(gtData, None)
+
+        # 디버그: 첫 배치 prediction shape 확인
+        if bii == 0:
+            print(f"DEBUG: [VAL] Batch {bii} - prediction shape:", prediction.shape)
+
+
         g_loss = calc_vq_loss(prediction, gtData, quant_loss)
         testLoss += g_loss.detach().item()
     testLoss /= totalSteps
@@ -108,46 +141,58 @@ def main(args):
     torch.manual_seed(23456)
     torch.cuda.manual_seed(23456)
     print('using config', args.config)
+
     with open(args.config) as f:
-      config = json.load(f)
+        config = json.load(f)
     tag = config['tag']
     pipeline = config['pipeline']
     currBestLoss = 1e3
-    ## can modify via configs, these are default for released model
     seq_len = 32
     prev_save_epoch = 0
     writer = SummaryWriter('runs/debug_{}{}'.format(tag, pipeline))
 
-    ## setting up models
-    fileName = config['model_path'] + \
-                '{}{}_best.pth'.format(tag, config['pipeline'])
+    # 모델 준비
+    fileName = config['model_path'] + '{}{}_best.pth'.format(tag, config['pipeline'])
     load_path = fileName if os.path.exists(fileName) else None
-    generator, g_optimizer, start_epoch = setup_vq_transformer(args, config,
-                                            version=None, load_path=load_path)
+    generator, g_optimizer, start_epoch = setup_vq_transformer(
+        args, config, version=None, load_path=load_path
+    )
     generator.train()
 
-    ## training/validation process
-    _, _, train_listener, test_listener, _, _ = \
-                    load_data(config, pipeline, tag, rng,
-                              segment_tag=config['segment_tag'], smooth=True)
-    train_X = np.concatenate((train_listener[:,:seq_len,:],
-                              train_listener[:,seq_len:,:]), axis=0)
-    test_X = np.concatenate((test_listener[:,:seq_len,:],
-                             test_listener[:,seq_len:,:]), axis=0)
+    # === (중요) load_data 호출 후, train_listener/test_listener 크기 출력 ===
+    _, _, train_listener, test_listener, _, _ = load_data(
+        config, pipeline, tag, rng,
+        segment_tag=config['segment_tag'],
+        smooth=True
+    )
+    print("Train listener shape:", train_listener.shape)
+    print("Test listener shape :", test_listener.shape)
+    print("Configured batch_size:", config['batch_size'])
+
+    # seq_len으로 잘라서 train_X/test_X 구성
+    train_X = np.concatenate((train_listener[:, :seq_len, :],
+                              train_listener[:, seq_len:, :]), axis=0)
+    test_X = np.concatenate((test_listener[:, :seq_len, :],
+                             test_listener[:, seq_len:, :]), axis=0)
     print('loaded listener...', train_X.shape, test_X.shape)
-    disc_factor = 0.0
+
+    # 이후 본격적인 학습 루프
     for epoch in range(start_epoch, start_epoch + config['num_epochs']):
         print('epoch', epoch, 'num_epochs', config['num_epochs'])
-        if epoch == start_epoch+config['num_epochs']-1:
+        if epoch == start_epoch + config['num_epochs'] - 1:
             print('early stopping at:', epoch)
             print('best loss:', currBestLoss)
             break
-        generator_train_step(config, epoch, generator, g_optimizer, train_X,
-                             rng, writer)
-        currBestLoss, prev_save_epoch, g_loss = \
-            generator_val_step(config, epoch, generator, g_optimizer, test_X,
-                               currBestLoss, prev_save_epoch, tag, writer)
+
+        generator_train_step(config, epoch, generator, g_optimizer, train_X, rng, writer)
+
+        currBestLoss, prev_save_epoch, g_loss = generator_val_step(
+            config, epoch, generator, g_optimizer, test_X,
+            currBestLoss, prev_save_epoch, tag, writer
+        )
+
     print('final best loss:', currBestLoss)
+
 
 
 if __name__ == '__main__':

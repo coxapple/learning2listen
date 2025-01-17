@@ -52,27 +52,27 @@ def setup_vq_transformer(args, config, load_path=None, test=False, version=None)
 
 
 def calc_vq_loss(pred, target, quant_loss, quant_loss_weight=1.0, alpha=1.0):
-    """ function that computes the various components of the VQ loss """
-
-    exp_loss = nn.L1Loss()(pred[:,:,:50], target[:,:,:50])
-    rot_loss = nn.L1Loss()(pred[:,:,50:53], target[:,:,50:53])
-    jaw_loss = alpha * nn.L1Loss()(pred[:,:,53:], target[:,:,53:])
-    ## loss is VQ reconstruction + weighted pre-computed quantization loss
-    return quant_loss.mean() * quant_loss_weight + \
-            (exp_loss + rot_loss + jaw_loss)
+    """
+    Original version assumed DECA 56 dims: 50(exp) + 3(rot) + 3(jaw).
+    For 209-dim data, we unify into a single L1Loss or custom slicing.
+    """
+    # Example: single L1Loss for entire feature dimension
+    # quant_loss is typically shape (B, T) or scalar
+    recon_loss = nn.L1Loss()(pred, target)
+    return quant_loss.mean() * quant_loss_weight + recon_loss
 
 
 class VQModelTransformer(nn.Module):
-    """ Transformer model for listener VQ-VAE """
-
     def __init__(self, config, version):
         super().__init__()
         self.encoder = TransformerEncoder(config)
-        self.decoder = TransformerDecoder(
-                                config, config['transformer_config']['in_dim'])
-        self.quantize = VectorQuantizer(config['VQuantizer']['n_embed'],
-                                        config['VQuantizer']['zquant_dim'],
-                                        beta=0.25)
+        # use out_dim= config['transformer_config']['in_dim'] => 209
+        self.decoder = TransformerDecoder(config, config['transformer_config']['in_dim'])
+        self.quantize = VectorQuantizer(
+            config['VQuantizer']['n_embed'],
+            config['VQuantizer']['zquant_dim'],
+            beta=0.25
+        )
 
     def encode(self, x, x_a=None):
         h = self.encoder(x) ## x --> z'
